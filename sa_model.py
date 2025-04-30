@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple, Dict, Optional
 from sqlalchemy import ForeignKey, String, Integer, Enum
 from sqlalchemy.orm import DeclarativeBase
@@ -6,6 +7,8 @@ from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 import enum
 import random
+
+logger = logging.getLogger(__name__)
 
 class Base(DeclarativeBase):
     pass
@@ -73,10 +76,10 @@ class Game(Base):
                 self.current_turn = 0
                 return True
             else:
-                print("Impossible de démarrer la partie : certains joueurs n'ont pas de position.")
+                logger.warning("Impossible de démarrer la partie : certains joueurs n'ont pas de position.")
                 return False
         else:
-            print("La partie est déjà démarrée.")
+            logger.info("La partie est déjà démarrée.")
             return False
     
     def stop_game(self):
@@ -85,13 +88,13 @@ class Game(Base):
             self.started = False
             return True
         else:
-            print("La partie n'est pas démarrée.")
+            logger.info("La partie n'est pas démarrée.")
             return False
 
     def register_action(self, player_id: int, action: Tuple[int, int]):
         """Enregistre une action pour un joueur si la partie est démarrée."""
         if not self.started:
-            print("Impossible d'enregistrer une action : la partie n'est pas démarrée.")
+            logger.warning("Impossible d'enregistrer une action : la partie n'est pas démarrée.")
             return False
         
         self._temp_actions[player_id] = action
@@ -100,7 +103,7 @@ class Game(Base):
     def process_actions(self):
         """Traite toutes les actions enregistrées si la partie est démarrée."""
         if not self.started:
-            print("Impossible de traiter les actions : la partie n'est pas démarrée.")
+            logger.warning("Impossible de traiter les actions : la partie n'est pas démarrée.")
             return False
         
         
@@ -124,15 +127,15 @@ class Game(Base):
             player = next((p for p in self.players if p.id == player_id), None)
             if player:
                 actions_to_process.append((player, action))
-                print(f"Action registered for player {player.pseudo} ({player.player_type.value}): movement ({action[0]}, {action[1]}) from position ({player.position_x}, {player.position_y})")
+                logger.info(f"Action registered for player {player.pseudo} ({player.player_type.value}): movement ({action[0]}, {action[1]}) from position ({player.position_x}, {player.position_y})")
         
       
         for player, action in actions_to_process:
             success = self.board.move_player(player, action)
             if success:
-                print(f"Player {player.pseudo} successfully moved to position ({player.position_x}, {player.position_y})")
+                logger.info(f"Player {player.pseudo} successfully moved to position ({player.position_x}, {player.position_y})")
             else:
-                print(f"Player {player.pseudo} failed to move from ({player.position_x}, {player.position_y}) using action ({action[0]}, {action[1]})")
+                logger.warning(f"Player {player.pseudo} failed to move from ({player.position_x}, {player.position_y}) using action ({action[0]}, {action[1]})")
         
        
         for player_id, action in self._temp_actions.items():
@@ -154,7 +157,7 @@ class Game(Base):
     
         if self.current_turn >= self.nb_max_turn:
             self.stop_game()
-            print(f"Partie terminée après {self.current_turn} tours.")
+            logger.info(f"Partie terminée après {self.current_turn} tours.")
             
         return True
 
@@ -284,7 +287,7 @@ class GameBoard(Base):
     def subscribe_player(self, player: Player):
         available = self.available_positions
         if not available:
-            print('No more space to play')
+            logger.warning('No more space to play')
             return False
             
         pos_x, pos_y = random.choice(available)
@@ -316,7 +319,7 @@ class GameBoard(Base):
     def move_player(self, player: Player, action: Tuple[int, int]):
         width_delta, height_delta = action
         if not (-1 <= width_delta <= 1 and -1 <= height_delta <= 1):
-            print(f"Invalid movement delta: ({width_delta}, {height_delta}). Must be between -1 and 1.")
+            logger.warning(f"Invalid movement delta: ({width_delta}, {height_delta}). Must be between -1 and 1.")
             return False
             
         
@@ -326,25 +329,25 @@ class GameBoard(Base):
 
         
         if not (0 <= next_x < self.width and 0 <= next_y < self.height):
-            print(f"Movement out of bounds: ({next_x}, {next_y}) is outside board size ({self.width}x{self.height})")
-          
+            logger.warning(f"Movement out of bounds: ({next_x}, {next_y}) is outside board size ({self.width}x{self.height})")
+           
             if width_delta != 0 and 0 <= current_x + width_delta < self.width:
                 next_y = current_y  
                 next_x = current_x + width_delta
-                print(f"Adjusting to horizontal movement to ({next_x}, {next_y})")
-           
+                logger.info(f"Adjusting to horizontal movement to ({next_x}, {next_y})")
+            
             elif height_delta != 0 and 0 <= current_y + height_delta < self.height:
                 next_x = current_x  
                 next_y = current_y + height_delta
-                print(f"Adjusting to vertical movement to ({next_x}, {next_y})")
+                logger.info(f"Adjusting to vertical movement to ({next_x}, {next_y})")
             else:
-              
+               
                 return False
-            
-       
+              
+        
         current_next_cell = self.get_cell(current_x, current_y, is_next_state=True)
         if current_next_cell:
-           
+            
             other_players_at_current = [p for p in self.game.players 
                                         if p.id != player.id and p.position_x == current_x and p.position_y == current_y]
                                         
@@ -373,28 +376,28 @@ class GameBoard(Base):
                     alt_x = current_x + alt_dx
                     alt_y = current_y + alt_dy
                     
-                  
+                   
                     if not (0 <= alt_x < self.width and 0 <= alt_y < self.height):
                         continue
                         
                     alt_cell = self.get_cell(alt_x, alt_y, is_next_state=True)
                     if alt_cell and player.can_defeat(alt_cell.symbol):
-                        print(f"Player {player.pseudo} ({player.player_type.value}) redirected to ({alt_x}, {alt_y})")
+                        logger.info(f"Player {player.pseudo} ({player.player_type.value}) redirected to ({alt_x}, {alt_y})")
                         next_x, next_y = alt_x, alt_y
                         target_next_cell = alt_cell
                         break
                 else:
                 
-                    print(f"Player {player.pseudo} ({player.player_type.value}) cannot move to cell ({next_x}, {next_y}) containing '{target_next_cell.symbol}' and no alternative found")
-               
+                    logger.warning(f"Player {player.pseudo} ({player.player_type.value}) cannot move to cell ({next_x}, {next_y}) containing '{target_next_cell.symbol}' and no alternative found")
+                
                     next_x, next_y = current_x, current_y
                     target_next_cell = current_next_cell
-            
-
+              
+ 
             player.position_x = next_x
             player.position_y = next_y
-            
-         
+              
+          
             if player.player_type == PlayerType.WOLF:
                 target_next_cell.symbol = 'W'
             elif player.player_type == PlayerType.VILLAGER:
@@ -402,7 +405,7 @@ class GameBoard(Base):
                 
             return True
                 
-        print(f"Could not find target cell at ({next_x}, {next_y})")
+        logger.error(f"Could not find target cell at ({next_x}, {next_y})")
         return False
 
     def end_round(self):
